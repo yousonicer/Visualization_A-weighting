@@ -37,6 +37,16 @@ def get_octave_band_base_2(start, multi, oc):
     return np.asarray(bands)
 
 
+
+def list_audio_devices():
+    p = pyaudio.PyAudio()
+    info = p.get_host_api_info_by_index(0)
+    numdevices = info.get('deviceCount')
+    for i in range(0, numdevices):
+        if (p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
+            print("Input Device id ", i, " - ", p.get_device_info_by_host_api_device_index(0, i).get('name'))
+    p.terminate()
+
 def record_audio(file_path, duration, sr):
     CHUNK = 1024
     FORMAT = pyaudio.paInt16
@@ -44,33 +54,50 @@ def record_audio(file_path, duration, sr):
     RATE = sr
     RECORD_SECONDS = duration
 
-    p = pyaudio.PyAudio()
+    try:
+        p = pyaudio.PyAudio()
+        list_audio_devices()  # 列出可用的音频设备
 
-    stream = p.open(format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    frames_per_buffer=CHUNK)
+        # 默认选择设备ID为0的设备
+        device_index = 0
+
+        stream = p.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        input=True,
+                        input_device_index=device_index,
+                        frames_per_buffer=CHUNK)
+    except Exception as e:
+        print(f"Error opening stream: {e}")
+        return
+
     frames = []
     print("Recording...")
 
-    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-        data = stream.read(CHUNK)
-        frames.append(data)
+    try:
+        for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+            data = stream.read(CHUNK)
+            frames.append(data)
+            # 检查数据是否为全零
+            if np.frombuffer(data, dtype=np.int16).max() == 0:
+                print(f"Frame {i}: data is all zeros")
+    except Exception as e:
+        print(f"Error during recording: {e}")
+    finally:
+        print("Recording finished.")
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
 
-    print("Recording finished.")
-
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
-
-    wf = wave.open(file_path, 'wb')
-    wf.setnchannels(CHANNELS)
-    wf.setsampwidth(p.get_sample_size(FORMAT))
-    wf.setframerate(RATE)
-    wf.writeframes(b''.join(frames))
-    wf.close()
-
+    try:
+        wf = wave.open(file_path, 'wb')
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(p.get_sample_size(FORMAT))
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(frames))
+        wf.close()
+    except Exception as e:
+        print(f"Error saving file: {e}")
 
 def a_weighting(frequencies):
     frequencies[0] = frequencies[0] + 1e-12
@@ -141,7 +168,8 @@ def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, 
         else:
             xticks.append(str(int(temp[0])))
 
-    plt.figure(2)
+    plt.ion()
+    plt.figure(1)
     plt.bar(range(len(spl_values)), spl_values, facecolor='b', width=0.8, zorder=3)
     plt.title("1/3 octave SPL || Overall SPL is %f " % np.round(spl_overall, 3))
     plt.xticks(list(range(len(spl_values))), xticks, rotation=30)
@@ -150,6 +178,7 @@ def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, 
     plt.ylabel('SPL')
     plt.tight_layout()
     plt.show()
+    plt.pause(0.1)
 
 
 if __name__ == '__main__':
