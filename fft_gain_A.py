@@ -83,8 +83,8 @@ def a_weighting(frequencies):
 
 
 def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, oc_f=0, gain=0, A_weighting=False):
-    # record_audio(file_path, duration=record_time, sr=sr)
-    # print("Audio recorded and saved as 'recorded_audio.wav'.")
+    record_audio(file_path, duration=record_time, sr=sr)
+    print("Audio recorded and saved as 'recorded_audio.wav'.")
 
     sig, Fs = librosa.load(file_path)
     print(sig)
@@ -160,4 +160,6 @@ if __name__ == '__main__':
     oc_f = 0  # 0是倍频程，1是1/3倍频程
     gain = 10  # 增益大小
     A_weighting = True  # 是否使用A集权
-    measure_spl('recorded_audio.wav', record_time, sr, start_f, multi_f, oc_f, gain, A_weighting)
+    times = 1000  # 最大循环次数
+    for i in range(0, times):
+        measure_spl('recorded_audio.wav', record_time, sr, start_f, multi_f, oc_f, gain, A_weighting)
