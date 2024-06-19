@@ -10,6 +10,7 @@ import pyaudio
 import wave
 import threading
 
+
 def fft_custom(sig, Fs, zero_padding=False, window=True):
     if zero_padding:
         fft_num = np.power(2, math.ceil(np.log2(len(sig))))
@@ -30,6 +31,7 @@ def fft_custom(sig, Fs, zero_padding=False, window=True):
     mag[0] /= 2
     return f[:int(fft_num / 2)], abs(mag[:int(fft_num / 2)])
 
+
 def get_octave_band_base_2(start, multi, oc):
     bands = list()
     for i in range(0, multi * 3 - 2 if oc else multi):
@@ -37,6 +39,7 @@ def get_octave_band_base_2(start, multi, oc):
         bands.append(
             [central_frequency, central_frequency / np.power(2, 1 / 6), central_frequency * np.power(2, 1 / 6)])
     return np.asarray(bands)
+
 
 def list_audio_devices():
     p = pyaudio.PyAudio()
@@ -46,6 +49,7 @@ def list_audio_devices():
         if (p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
             print("Input Device id ", i, " - ", p.get_device_info_by_host_api_device_index(0, i).get('name'))
     p.terminate()
+
 
 def record_audio(file_path, duration, sr):
     CHUNK = 1024
@@ -99,16 +103,34 @@ def record_audio(file_path, duration, sr):
     except Exception as e:
         print(f"Error saving file: {e}")
 
+
 def a_weighting(frequencies):
-    frequencies[0] = frequencies[0] + 1e-12
-    ra = (12194 ** 2) * (frequencies ** 4)
-    denom = (frequencies ** 2 + 20.6 ** 2) * (frequencies ** 2 + 12194 ** 2) * \
-            np.sqrt((frequencies ** 2 + 107.7 ** 2) * (frequencies ** 2 + 737.9 ** 2))
-    a_weight = ra / denom
-    a_weight_db = 20 * np.log10(a_weight) + 2.00
+    """
+    Apply A-weighting to the given frequency array based on standard values.
+
+    :param frequencies: array of frequencies to apply A-weighting
+    :return: array of A-weighted values in dB
+    """
+    a_weighting_values = {
+        10: -70.4, 12.5: -63.4, 16: -56.7, 20: -50.5, 25: -44.7,
+        31.5: -39.4, 40: -34.6, 50: -30.2, 63: -26.2, 80: -22.5,
+        100: -19.1, 125: -16.1, 160: -13.4, 200: -10.9, 250: -8.6,
+        315: -6.6, 400: -4.8, 500: -3.2, 630: -1.9, 800: -0.8,
+        1000: 0.0, 1250: 0.6, 1600: 1.0, 2000: 1.2, 2500: 1.3,
+        3150: 1.2, 4000: 1.0, 5000: 0.5, 6300: -0.1, 8000: -1.1,
+        10000: -2.5, 12500: -4.3, 16000: -6.6, 20000: -9.3
+    }
+
+    # Interpolate A-weighting values for given frequencies
+    freqs = np.array(list(a_weighting_values.keys()))
+    a_weights = np.array(list(a_weighting_values.values()))
+    a_weight_db = np.interp(frequencies, freqs, a_weights)
+
     return a_weight_db
 
-def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, oc_f=0, gain=0, A_weighting=False, plot=None):
+
+def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, oc_f=0, gain=0, A_weighting=False,
+                plot=None):
     record_audio(file_path, duration=record_time, sr=sr)
     print("Audio recorded and saved as 'recorded_audio.wav'.")
 
@@ -129,7 +151,7 @@ def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, 
 
     if A_weighting:
         a_weight = a_weighting(f)
-        mag_fft = mag_fft * 10**(a_weight / 20)
+        mag_fft = mag_fft * 10 ** (a_weight / 20)
 
     temp = [(temp / np.sqrt(2)) * (temp / np.sqrt(2)) for temp in mag_fft]
     p_square_frequency = np.sum(temp)
@@ -148,6 +170,8 @@ def measure_spl(file_path, record_time=0.5, sr=44100, start_f=31.25, multi_f=8, 
         temp = [temp ** 2 / 2 for temp in band_frequencies_mag]
         p_square_frequency_band = np.sum(temp)
         spl_ = 20 * np.log10(p_square_frequency_band / 0.0000000004)
+        if spl_ < 0:
+            spl_ = 0.0000000004
         if band[0] <= Fs / 2:
             spl_of_bands.append([band[0], spl_])
         else:
@@ -212,7 +236,7 @@ class App:
         self.a_weighting_check = tk.Checkbutton(root, text="A-Weighting", variable=self.a_weighting_var)
         self.a_weighting_check.pack()
 
-        self.start_button = tk.Button(root, text="Start Measurement", command=self.start_measurement)
+        self.start_button = tk.Button(root, text="Start Measurement", command=self.toggle_measurement)
         self.start_button.pack()
 
         self.fig, self.ax = plt.subplots(figsize=(8, 4))
@@ -231,10 +255,20 @@ class App:
         self.gain_entry.delete(0, tk.END)
         self.gain_entry.insert(0, str(self.gain))
 
+    def toggle_measurement(self):
+        if self.is_running:
+            self.stop_measurement()
+        else:
+            self.start_measurement()
+
     def start_measurement(self):
-        if not self.is_running:
-            self.is_running = True
-            self.update_measurement()
+        self.is_running = True
+        self.start_button.config(text="End Measurement")
+        self.update_measurement()
+
+    def stop_measurement(self):
+        self.is_running = False
+        self.start_button.config(text="Start Measurement")
 
     def update_measurement(self):
         if self.is_running:
@@ -242,6 +276,7 @@ class App:
             self.A_weighting = bool(self.a_weighting_var.get())
             threading.Thread(target=measure_spl, args=('recorded_audio.wav', self.record_time, self.sr, self.start_f, self.multi_f, self.oc_f, self.gain, self.A_weighting, self.ax)).start()
             self.root.after(1000, self.update_measurement)  # 更新间隔
+
 
 
 if __name__ == "__main__":
